@@ -12,6 +12,14 @@
     output: 'electron-release/${version}',
   },
   files: ['dist', 'electron-dist'],
+  // The only native addon that reaches the packaged app is
+  // @nut-tree-fork/libnut-linux, which ships as a prebuilt NAPI binary and is
+  // therefore ABI-stable across Node/Electron versions.  Rebuilding buys us
+  // nothing and currently fails outright: @electron/rebuild pulls in node-abi
+  // 3.x, which cannot map Electron 33 to an ABI, so it dies on cpu-features --
+  // an optional accelerator for ssh2 (via billd-deploy) that falls back to
+  // pure JavaScript anyway.
+  npmRebuild: false,
   mac: {
     target: ['dmg'],
     artifactName: '${productName}-mac-${platform}-${version}-${arch}-installer.${ext}',
