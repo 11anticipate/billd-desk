@@ -5,6 +5,7 @@ import {
   app,
   BrowserWindow,
   desktopCapturer,
+  dialog,
   ipcMain,
   Menu,
   powerMonitor,
@@ -16,10 +17,14 @@ import {
 import { IPC_EVENT } from '../src/event';
 import { WINDOW_ID_ENUM } from '../src/pure-constant';
 
-import type { nutjsTs } from './types';
-import type { IIpcRendererData } from '../src/pure-interface';
+import { Button, createInjector } from './input/injector';
 
-const nutjs: nutjsTs = require('@nut-tree-fork/nut-js');
+import type { IIpcRendererData } from '../src/pure-interface';
+import type { InputInjector } from './input/injector';
+
+// Wayland has no global input-injection API, so the portal backend is used
+// there; every other platform keeps the original nut.js (XTest / native) path.
+const injector: InputInjector = createInjector();
 
 // 该版本electron所对应的node版本
 console.log('process.version', process.version);
@@ -331,7 +336,7 @@ function main() {
       const { requestId, data } = reqData;
       const { windowId, x, y } = data;
       try {
-        await nutjs.mouse.move([{ x, y }]);
+        await injector.mouse.move([{ x, y }]);
         winWebContentsSend({
           windowId,
           channel: IPC_EVENT.commonTest,
@@ -480,7 +485,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.scrollDown(amount);
+          await injector.mouse.scrollDown(amount);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mouseScrollDown,
@@ -512,7 +517,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.scrollUp(amount);
+          await injector.mouse.scrollUp(amount);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mouseScrollUp,
@@ -543,7 +548,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.scrollLeft(amount);
+          await injector.mouse.scrollLeft(amount);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mouseScrollLeft,
@@ -574,7 +579,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.scrollRight(amount);
+          await injector.mouse.scrollRight(amount);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mouseScrollRight,
@@ -605,7 +610,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.setPosition({ x, y });
+          await injector.mouse.setPosition({ x, y });
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mouseSetPosition,
@@ -634,7 +639,7 @@ function main() {
     const win = windowMap.get(windowId);
     if (win) {
       try {
-        await nutjs.mouse.move([{ x, y }]);
+        await injector.mouse.move([{ x, y }]);
         winWebContentsSend({
           windowId,
           channel: IPC_EVENT.response_mouseMove,
@@ -662,7 +667,7 @@ function main() {
     const win = windowMap.get(windowId);
     if (win) {
       try {
-        await nutjs.mouse.drag([{ x, y }]);
+        await injector.mouse.drag([{ x, y }]);
         winWebContentsSend({
           windowId,
           channel: IPC_EVENT.response_mouseDrag,
@@ -693,7 +698,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.keyboard.type(key);
+          await injector.keyboard.type(key);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_keyboardType,
@@ -725,7 +730,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.keyboard.pressKey(...key);
+          await injector.keyboard.pressKey(...key);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_keyboardPressKey,
@@ -757,7 +762,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.keyboard.releaseKey(...key);
+          await injector.keyboard.releaseKey(...key);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_keyboardReleaseKey,
@@ -788,7 +793,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.pressButton(nutjs.Button.LEFT);
+          await injector.mouse.pressButton(Button.LEFT);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mousePressButtonLeft,
@@ -819,7 +824,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.releaseButton(nutjs.Button.LEFT);
+          await injector.mouse.releaseButton(Button.LEFT);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mouseReleaseButtonLeft,
@@ -850,7 +855,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.doubleClick(nutjs.Button.LEFT);
+          await injector.mouse.doubleClick(Button.LEFT);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mouseDoubleClick,
@@ -881,7 +886,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.click(nutjs.Button.LEFT);
+          await injector.mouse.click(Button.LEFT);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mouseLeftClick,
@@ -912,7 +917,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          await nutjs.mouse.click(nutjs.Button.RIGHT);
+          await injector.mouse.click(Button.RIGHT);
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_mouseRightClick,
@@ -943,7 +948,7 @@ function main() {
       const win = windowMap.get(windowId);
       if (win) {
         try {
-          const point = await nutjs.mouse.getPosition();
+          const point = await injector.mouse.getPosition();
           winWebContentsSend({
             windowId,
             channel: IPC_EVENT.response_getMousePosition,
@@ -1105,6 +1110,20 @@ function main() {
           const source = inputSources[key];
           if (!res.length) {
             res.push(source);
+          }
+        });
+        // The screen-share dialog has just been accepted, so this is the earliest
+        // point at which input injection can be requested without prompting the
+        // user for something they have not asked for yet.  Failure only costs
+        // input control, never the video stream, so it is reported and ignored.
+        injector.attach(win).then(() => {
+          if (!injector.ready) {
+            dialog.showMessageBox(win, {
+              type: 'warning',
+              message: '无法注入键鼠输入',
+              detail:
+                '屏幕共享已授权，但输入注入授权失败或被拒绝，远程端只能观看画面，无法操作。',
+            });
           }
         });
         winWebContentsSend({
@@ -1270,6 +1289,10 @@ app.on('ready', () => {
 app.on('window-all-closed', () => {
   app.quit();
   windowMap.clear();
+});
+
+app.on('before-quit', () => {
+  void injector.dispose();
 });
 
 // app.whenReady().then(main);

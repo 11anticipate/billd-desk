@@ -57,7 +57,7 @@ inputInjector.dispatch(action, payload)
 | `electron-main/input/nutjs-injector.ts` | 现有 17 处 nut.js 调用原样搬入 |
 | `electron-main/input/portal-injector.ts` | 新写。翻译成 D-Bus `Notify*` 调用 |
 | `electron-main/input/portal-session.ts` | RemoteDesktop 会话生命周期 + D-Bus 连接 |
-| `electron-main/input/evdev-keys.ts` | 134 条 `nut.js Key 值 → evdev 码` 静态表 |
+| `electron-main/input/evdev-keys.ts` | 132 条 `nut.js Key 值 → evdev 码` 静态表（`Fn`/`Clear` 无 evdev 对应） |
 | `scripts/gen-evdev-keys.cjs` | 上述表的生成脚本（出处可复现） |
 
 **接口按 nut.js 语义定义**，不是按 portal 语义。这样 `nutjs-injector.ts` 是零改动搬运，portal 的坐标归一化、button code、keycode 转换全部封在 `portal-injector.ts` 内部。
@@ -83,20 +83,29 @@ desktopCapturer.getSources() 返回 source
 
 串行而非并发：两个 GNOME 模态弹窗同时排队会互相遮挡，用户容易只点掉一个然后卡死。
 
-**调用序列**（签名依据 xdg-desktop-portal 官方规范）：
+**调用序列**（签名依据 xdg-desktop-portal 官方规范，实测验证）：
 
 ```
-CreateSession({})                                       → Request
-SelectDevices(session, {types:3, persist_mode:1, restore_token})  → Request
-Start(session, '', {})                                  → Request
+RemoteDesktop.CreateSession({handle_token, session_handle_token})
+ScreenCast.SelectSources(session, {types:1, multiple:false, cursor_mode:1, handle_token})
+RemoteDesktop.SelectDevices(session, {types:3, handle_token})
+RemoteDesktop.Start(session, '', {handle_token})
+        → Response: {devices, streams:[(nodeId, {size:[w,h], ...})], restore_token}
 ```
+
+四步缺一不可，两个非显然之处：
+
+1. **`CreateSession` 必须同时传 `handle_token` 和 `session_handle_token`。** 缺后者会得到 `Missing token` —— `request.c` 的 `get_token()` 对 `handle_token` 缺失默认回退成 `"t"` 所以不报错，而 `session.c` 的 `lookup_session_token()` 读的是另一个键，返回 NULL 才报错。两者都在官方文档里，只是紧邻着容易被漏读。
+2. **`SelectSources` 之后必须调 `RemoteDesktop.Start`，不能调 `ScreenCast.Start`。** 后者的 handler 只认 ScreenCastSession，对 RemoteDesktop session 会报 `Sources not selected`。`SelectSources` 返回空结果字典是设计如此（它只记录选屏意向，真正选屏发生在 `Start` 弹出的对话框里）。
 
 - `types` bitmask：KEYBOARD=1 / POINTER=2 → 3
-- `persist_mode`：1 = 权限随应用运行期有效
 - `parent_window` 传空串（Electron 拿不到可传的 Wayland 窗口句柄，Wayland 后端一般忽略该参数）
-- `restore_token` 在 `SelectDevices` 传入，从 `Start` 的 Response 取回，存到 `app.getPath('userData')/portal-restore.json`
 
-**预期弹窗次数**：首次连接 2 次（ScreenCast 一次 + RemoteDesktop 一次）。后续 `restore_token` 可能免掉第二次，但是否兑现需实测；即使不兑现也只是多点一下，功能不受影响。ScreenCast 侧 Chromium 自己管理 token，我们无法共享。
+**弹窗次数**：每次连接 2 次（ScreenCast 一次 + RemoteDesktop 一次）。
+
+**不使用 `restore_token`（实测结论，与初版设计相反）**：初版设计打算用 `persist_mode: 1` + `restore_token` 免掉第二个弹窗。实测发现 portal-gnome 的恢复路径会重建出一个 `device_types = 0` 的会话，mutter 随即拒绝所有注入调用（`Session is not allowed to call NotifyPointer methods`）。恢复不可靠且危害大于收益，故移除，改为每次正常弹窗。
+
+替代的兜底是**硬校验**：`Start` 的 Response 里 `devices` 必须包含 KEYBOARD|POINTER，否则直接抛错，让上层弹「无法注入键鼠输入」提示，而不是让用户对着一个看得见摸不着的画面。
 
 **会话不主动关闭**：RemoteDesktop 会话只在收到 `Notify*` 时注入事件，不持有输入 grab，常驻无害。主进程收不到「远程会话结束」通知（该消息在 renderer 的 WebSocket 里），在 `before-quit` 时关闭即可。
 
@@ -123,9 +132,13 @@ Start(session, '', {})                                  → Request
 2. `axis` 是**数字**不是字符串：`0=Vertical, 1=Horizontal`。
 3. `button` 是 **evdev 码**不是 nut.js 枚举：`Button.LEFT=0→272(0x110)`、`RIGHT=1→273(0x111)`、`MIDDLE=2→274(0x112)`。
 
+**`stream` 参数 = `Start` 返回的 `streams[0][0]`**（PipeWire node id，本机实测为 79/80 这类小整数）。
+
+不是 `0`。规范未定义 0 的语义，而 portal-gnome `remotedesktop.c` 是用 `gnome_screen_cast_session_get_stream_path_from_id()` 拿 id 去反查 stream path 的，查不到就报 `Invalid position`。该 screencast session 只在 `Start` 真正带上了屏幕流时才创建，所以 `SelectSources` 那一步是拿到 stream id 的必要条件。
+
 **坐标换算**：
 
-规范原文：`NotifyPointerMotionAbsolute` 的 *"The (x, y) position represents the new pointer position in the stream's **logical coordinate space**"*。
+规范原文：`NotifyPointerMotionAbsolute` 的 *"The (x, y) position represents the new pointer position in the stream's **logical coordinate space**"*（即 `Start` 返回的 `streams[0][1].size`，本机为 2048×1152）。
 
 - injector 接口收**物理像素**，与 nut.js 语义一致（上游 `use-ipcRendererSend.ts:204-211` 先算 `x_phys = primaryDisplaySize.width * scaleFactor * (data.x/1000)` = 2560 × 比例）
 - 归一化：`xn = clamp(x_phys / (logicalWidth * scaleFactor), 0, 1)`
@@ -138,11 +151,11 @@ Start(session, '', {})                                  → Request
 
 `NotifyKeyboardKeycode(o, a{sv}, i keycode, u state)`，keycode 为 evdev 码，`state` `0=Released / 1=Pressed`。
 
-- **134 条映射表硬编码进仓库**。nut.js `Key` 枚举（134 个成员，定义在 `@nut-tree-fork/shared/dist/lib/enums/key.enum.d.ts`）是 nut.js 自定义的顺序枚举（`Escape=0, F1=1 … Num1=29 … A=71`），与 evdev（`KEY_ESC=1, KEY_A=30, KEY_1=2`）完全不同编号。
-- 表的生成草稿已完成：89 条自动匹配 + 45 条需人工确认（`Num1..Num0`、`NumPad*`、`LeftSuper/RightSuper`、`Audio*` 等），0 条无对应，2 处数值别名（evdev 28 = Return/Enter，evdev 0 = Fn/Clear）。
+- **132 条映射表硬编码进仓库**（134 减去无 evdev 对应的 `Fn`、`Clear`）。nut.js `Key` 枚举（134 个成员，定义在 `@nut-tree-fork/shared/dist/lib/enums/key.enum.d.ts`）是 nut.js 自定义的顺序枚举（`Escape=0, F1=1 … Num1=29 … A=71`），与 evdev（`KEY_ESC=1, KEY_A=30, KEY_1=2`）完全不同编号。
+- 表已由 `scripts/gen-evdev-keys.cjs` 从 `/usr/include/linux/input-event-codes.h` 生成：89 条自动匹配 + 一张 `OVERRIDES` 表处理无法机械推导的键（`Num1..Num0`、`NumPad*`、`LeftSuper/RightSuper`、`Audio*` 等），仅 `Fn`/`Clear` 丢弃。
 - **evdev 0（`KEY_RESERVED`）视为无效键 → 跳过 + `console.warn`**，不抛错。
 - `pressKey(...keys)` / `releaseKey(...keys)` 的数组展开：nut.js 语义是 chord。portal 侧逐个连发 `Notify*`，**严格保持数组原顺序**（上游释放时传的是同一个顺序，不是反序，不要反转）。
-- `keyboard.type()` 无法实现（portal 只能发 evdev 键码），但它是死代码，不在范围内。
+- `keyboard.type()` 无法实现（portal 只能发 evdev 键码，不能输入任意文本）。它只 `console.warn` 一次后静默返回，**不 reject** —— 抛错会被 IPC handler 捕获并回 `code: 1`，主控端可能因此拆掉整个会话。它是死代码（没有控制端发送 `keyboardType`），不值得为它承担这个风险。
 
 ## 8. 实现选择与错误处理
 
@@ -168,8 +181,8 @@ Windows/macOS 代码路径零变化。
 
 | 层 | 内容 |
 |---|---|
-| 单元（无 Electron/D-Bus） | `evdev-keys.ts` 134 条全覆盖、码值 ∈ [1,767] 且无 0；坐标换算在 `(2048, 1.25)` 下断言四角 + 正中；`Button.LEFT→272`、`Key.A→30` |
-| D-Bus 集成（手动脚本） | ① `CreateSession→SelectDevices→Start` 拿到 `devices=3` ② `stream=0` 被 mutter 接受 ③ `NotifyKeyboardKeycode(30, Pressed)` 在 GNOME 里打出 `a` |
+| 单元（无 Electron/D-Bus，已完成 11 项） | `evdev-keys.ts` 132 条全覆盖、码值 ∈ [1,767] 且无 0、抽查映射；坐标换算在 `(2048, scale)` 下断言四角 + 正中 + `[0,1000]` 往返 + 越界 clamp；`BUTTON_TO_EVDEV` 为 `0x110/0x111/0x112` |
+| D-Bus 集成（已完成） | 四步序列拿到 `devices=3` 与 node id；`NotifyPointerMotionAbsolute` / `NotifyPointerButton(272)` / `NotifyPointerAxisDiscrete` / `NotifyKeyboardKeycode(30)` 全部被 mutter 接受 |
 | 端到端手工验收 | 手机客户端实测：移动/单击/双击/右键/拖拽/四向滚轮；字母/数字/Shift·Ctrl·Alt 组合/Ctrl+C·V/方向键/回车/退格/Tab；剪贴板与文件传输走现有 DataChannel，回归验证 |
 | 回归 | Windows/macOS 打包与 nut.js 路径不受影响 |
 

@@ -26,6 +26,7 @@
     "gen-icons": "electron-icon-builder --input=./build/source/billd.png --output=./build/ --flatten",
     "lint": "eslint . --config ./eslint.config.js --cache",
     "lint:fix": "eslint . --config ./eslint.config.js --cache --fix",
+    "test": "vitest run",
     "preview": "vite preview",
     "release": "standard-version"
   },
@@ -47,6 +48,7 @@
     "billd-html-webpack-plugin": "^1.2.0",
     "billd-scss": "^0.0.8",
     "billd-utils": "^0.0.25",
+    "dbus-next": "0.10.2",
     "js-cookie": "^3.0.5",
     "naive-ui": "^2.34.4",
     "pinia": "^2.1.6",
@@ -98,6 +100,7 @@
     "vite-plugin-electron-renderer": "^0.14.5",
     "vite-plugin-eslint2": "^5.0.3",
     "vite-plugin-html": "^3.2.2",
+    "vitest": "2.1.9",
     "vue-eslint-parser": "^9.4.3",
     "vue-tsc": "^2.1.10"
   },
