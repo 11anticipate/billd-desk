@@ -29,6 +29,12 @@
     artifactName: '${productName}-linux-${platform}-${version}-${arch}-installer.${ext}',
     // amd是x64
     target: [{ target: 'AppImage', arch: ['x64', 'arm64'] }],
+    // Chromium refuses to start when it finds chrome-sandbox without root:4755,
+    // which is always the case inside a mounted AppImage -- squashfs cannot
+    // carry the SUID owner.  Chromium then aborts instead of falling back, so
+    // the only way to make the AppImage launch by double click is to disable
+    // the sandbox.  The alternative is to chmod the extracted copy by hand.
+    executableArgs: ['--no-sandbox'],
   },
   win: {
     artifactName: '${productName}-win-${platform}-${version}-${arch}-installer.${ext}',
