@@ -1,3 +1,9 @@
+// Imported statically on purpose.  A `require()` here would be treated as an
+// external dependency by vite's lib-mode build and left unresolvable at
+// runtime, since only the entry chunk reaches electron-dist/.
+import { NutJsInjector } from './nutjs-injector';
+import { PortalInjector } from './portal-injector';
+
 import type { BrowserWindow } from 'electron';
 
 /** Matches nut.js's `Point`. Structurally identical, no nut.js coupling. */
@@ -80,15 +86,6 @@ export function detectSessionType(): 'wayland' | 'x11' | 'other' {
  * the native libnut binding it will never use, and so that a Windows/macOS
  * install never loads `dbus-next`.
  */
-function loadNutJs(): typeof import('./nutjs-injector') {
-  // eslint-disable-next-line global-require
-  return require('./nutjs-injector');
-}
-
-function loadPortal(): typeof import('./portal-injector') {
-  // eslint-disable-next-line global-require
-  return require('./portal-injector');
-}
 
 /**
  * Pick a backend.
@@ -105,6 +102,5 @@ export function createInjector(): InputInjector {
   else if (process.platform !== 'linux') usePortal = false;
   else usePortal = detectSessionType() === 'wayland';
 
-  if (!usePortal) return new (loadNutJs().NutJsInjector)();
-  return new (loadPortal().PortalInjector)();
+  return usePortal ? new PortalInjector() : new NutJsInjector();
 }

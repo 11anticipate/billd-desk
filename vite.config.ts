@@ -78,6 +78,14 @@ export default defineConfig(({ mode }) => {
                 formats: ['cjs'],
                 fileName: () => '[name].cjs',
               },
+              rollupOptions: {
+                // Keep these out of the bundle.  Both are CommonJS packages that
+                // resolve optional/native dependencies at runtime -- nut.js pulls
+                // in `x11` behind a try/catch, and inlining it hoists that
+                // require to the top level and the app dies on startup with
+                // "Cannot find module 'x11'".
+                external: [/^@nut-tree-fork\//, 'dbus-next'],
+              },
             },
           },
         },
