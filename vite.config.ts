@@ -28,7 +28,10 @@ export default defineConfig(({ mode }) => {
       }
     } else {
       if (isProduction) {
-        return 'dist';
+        // Relative, so that the file:// load in electron-main/index.ts resolves
+        // assets next to index.html.  A bare 'dist' is emitted as '/dist/...',
+        // which file:// reads as the filesystem root and renders a blank page.
+        return './';
       } else {
         return './';
       }
