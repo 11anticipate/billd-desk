@@ -14,7 +14,7 @@
 </h1>
 
 <p align="center">
-  基于Vue3 + WebRTC + Nodejs + Electron + Flutter搭建的桌面控制（win、mac、安卓）
+  基于Vue3 + WebRTC + Nodejs + Electron + Flutter搭建的桌面控制（win、mac、linux、安卓）
 </p>
 
 <div align="center">
@@ -29,6 +29,87 @@
 ![language](https://img.shields.io/github/languages/top/galaxy-s10/billd-desk-flutter)
 
 </div>
+
+## ⚠️ 本仓库说明（fork）
+
+这是 [galaxy-s10/billd-desk](https://github.com/galaxy-s10/billd-desk) 的 fork，分支 `ubuntu-wayland`。**上游代码与协议均未改动，功能与原开源版一致**，只额外解决了「Ubuntu / GNOME Wayland 下无法作为被控端」这一个上游未完成的功能。
+
+如果你不需要 Wayland 支持，请直接使用上游仓库，本仓库对你没有价值。
+
+### 为什么上游在 Wayland 下不能被控
+
+上游的键鼠注入全部依赖 [nut.js](https://github.com/nut-tree-fork/nut-js)，它在 Linux 下走 X11 的 XTest 扩展。而 Wayland 从协议层面移除了全局输入注入能力，因此 GNOME 原生应用、终端、文件管理器都收不到注入的输入事件 —— 表现就是画面能看、鼠标键盘完全没反应。
+
+本仓库改用 Wayland 的官方标准通道 `org.freedesktop.portal.RemoteDesktop`。不需要 root，不需要切换到 Xorg 会话，也不需要安装 `ydotool` 之类的内核模块。
+
+### 已验证环境
+
+| 项 | 值 |
+| --- | --- |
+| 系统 | Ubuntu 24.04.5 LTS |
+| 桌面 | GNOME 46，Wayland 会话 |
+| 显卡 | NVIDIA RTX 4060 Laptop（驱动 595.91.07）+ AMD Radeon 混合显卡 |
+| 被控端 | Electron 33.2.1，AppImage（x64 / arm64） |
+| 主控端 | 官方 Android 客户端（HarmonyOS 4 / EMUI 实测可用） |
+
+实测通过的输入操作：鼠标绝对定位移动、单击、双击、右键、拖拽、四向滚轮、键盘（字母、数字、Shift/Ctrl/Alt 组合、功能键）。
+
+### 使用方式
+
+1. 在**主控端**（手机 / 另一台电脑）使用官方客户端。浏览器直接打开 <https://desk.hsslive.cn>，或从 <https://desk.hsslive.cn/#/download> 下载 Android 客户端。
+2. 在**被控端**（Ubuntu）安装本仓库构建的 AppImage：
+
+   ```bash
+   # 构建（需要 Node 20+）
+   npx vite build && npx electron-builder --linux
+
+   # 安装依赖缺失 FUSE 时先执行，或用 --appimage-extract-and-run 启动
+   sudo apt install libfuse2
+   ```
+
+3. 主控端发起远程后，**Ubuntu 桌面上会弹出两次授权框**：第一次是屏幕共享，第二次是键鼠注入。这是 Wayland 的安全模型，两次都必须点「允许」，无法绕过。
+
+### 已知限制
+
+| 限制 | 说明 |
+| --- | --- |
+| 每次远程会话都要点授权 | 上游协议与主控端不可改，无法预授权。实测 `restore_token` 会恢复出设备数为 0 的会话并导致注入全部被拒，故未采用 |
+| 不支持多显示器 | 上游 `getScreenStream` 硬编码只取第一个屏幕，鼠标坐标换算也只按主显示器计算。属于上游问题，本仓库未修 |
+| 不支持开机自启 / 无人值守 | 上游开源版未实现 |
+| 无法输入任意文本 | portal 只能发送 evdev 键码。`keyboard.type` 在上游是死代码，不影响使用 |
+| 不支持隐私屏 / 虚拟屏 / 安卓被控 | 上游开源版未实现 |
+
+### 实现要点
+
+改动全部收敛在 `electron-main/input/`，`src/`、IPC 协议、线上消息格式一行未动：
+
+| 文件 | 职责 |
+| --- | --- |
+| `injector.ts` | 输入注入接口 + 后端选择（`BILLD_INPUT_BACKEND=nutjs\|portal` 可强制覆盖） |
+| `nutjs-injector.ts` | 原有 nut.js 逻辑，Windows / macOS / Linux X11 走这里，行为与上游一致 |
+| `portal-injector.ts` | Wayland 实现：坐标归一化、evdev 事件码转换 |
+| `portal-session.ts` | RemoteDesktop portal 会话生命周期 |
+| `evdev-keys.ts` | 132 条 nut.js 键值 → Linux evdev 键码对照表 |
+| `scripts/gen-evdev-keys.cjs` | 上述对照表的生成脚本 |
+
+新增唯一依赖：[dbus-next](https://github.com/bus1/dbus-next)（纯 TypeScript，无原生编译）。
+
+平台选择的判断逻辑：非 Linux 平台走 nut.js；Linux 下读 `XDG_SESSION_TYPE`，`x11` 走 nut.js，`wayland` 走 portal。因此 Windows 与 macOS 的行为与上游完全一致。
+
+设计与实测细节见 [`docs/superpowers/specs/2026-10-04-billddesk-wayland-controlled-endpoint-design.md`](./docs/superpowers/specs/2026-10-04-billddesk-wayland-controlled-endpoint-design.md)。
+
+### 开发与测试
+
+```bash
+npx vitest run                    # 单元测试
+npx vue-tsc --noEmit -p tsconfig.json   # 类型检查（必须用 tsconfig.json）
+npx eslint electron-main/input --config ./eslint.config.js
+```
+
+> [!CAUTION]
+> 上游 README 指出 BilldDesk 至今未发布 1.0 稳定版，不建议用于生产环境。本 fork 同样如此。
+
+---
 
 ## ⭐️ BilldDesk
 
@@ -114,7 +195,7 @@ BilldDesk 远程桌面控制，目前实现了类似 ToDesk、向日葵等远程
 - [x] 设备分组
 - [x] 支持 macOS 系统
 - [x] 支持 Windows 系统
-- [ ] 支持 Linux 系统
+- [x] 支持 Linux 系统（Wayland 键鼠注入由本仓库实现，见上文「本仓库说明（fork）」）
 - [x] 支持 安卓端（Flutter）
 - [ ] 支持 苹果端（Flutter）
 - [x] 后台管理
@@ -271,7 +352,7 @@ billd-desk完全开源（可商用），欢迎部署！
 - [x] Windows 10、Windows 11
 - [x] Windows Server 2022，其他版本未实际测试
 - [x] macOS
-- [x] Linux
+- [x] Linux（X11 与 Wayland 均可作为被控端，Wayland 支持由本仓库实现）
 - [x] Android 11 至 Android 15，其他版本未实际测试
 - [ ] iOS
 
