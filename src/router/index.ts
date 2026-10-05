@@ -2,10 +2,12 @@ import { isIPad, isMobile } from 'billd-utils';
 import { createRouter, createWebHashHistory } from 'vue-router';
 
 import Layout from '@/layout/index.vue';
+import { getToken } from '@/utils/localStorage/user';
 
 import type { RouteRecordRaw } from 'vue-router';
 
 export const commonRouterName = {
+  login: 'login',
   qrcodeLogin: 'qrcodeLogin',
   notFound: 'notFound',
 };
@@ -56,6 +58,11 @@ export const defaultRoutes: RouteRecordRaw[] = [
     ],
   },
   {
+    name: routerName.login,
+    path: '/login',
+    component: () => import('@/views/login/index.vue'),
+  },
+  {
     name: routerName.privatizationDeployment,
     path: '/privatizationDeployment',
     component: () => import('@/views/privatizationDeployment/index.vue'),
@@ -95,6 +102,15 @@ const router = createRouter({
 });
 
 router.beforeEach((to, _from, next) => {
+  // Every API call except /user/login needs a bearer token, so an
+  // unauthenticated session would just render empty device codes.  Send it to
+  // the login page instead.
+  if (!getToken() && to.name !== routerName.login) {
+    return next({
+      name: routerName.login,
+      replace: true,
+    });
+  }
   if (Object.keys(commonRouterName).includes(to.name as string)) {
     // 跳转通用路由
     return next();

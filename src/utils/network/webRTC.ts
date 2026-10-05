@@ -1,6 +1,5 @@
 import { getRandomString } from 'billd-utils';
 
-import { COTURN_URL } from '@/constant';
 import { LiveLineEnum, MediaTypeEnum } from '@/interface';
 import { AppRootState, useAppStore } from '@/store/app';
 import { useNetworkStore } from '@/store/network';
@@ -539,14 +538,25 @@ export class WebRTCClass {
       const iceServers = this.isSRS
         ? []
         : [
-            // {
-            //   urls: 'stun:stun.l.google.com:19302',
-            // },
+            // The official web client (desk.hsslive.cn) negotiates with public
+            // STUN only, so match it: host + srflx candidates carry the
+            // peer-to-peer desktop sessions.  A TURN relay is appended when
+            // one is configured in 高级设置, for symmetric NAT.
             {
-              urls: getCoturnUrl() || COTURN_URL,
-              username: 'hss',
-              credential: '123456',
+              urls: 'stun:stun.l.google.com:19302',
             },
+            {
+              urls: 'stun:stun.services.mozilla.com:3478',
+            },
+            ...(getCoturnUrl()
+              ? [
+                  {
+                    urls: getCoturnUrl() as string,
+                    username: 'hss',
+                    credential: '123456',
+                  },
+                ]
+              : []),
           ];
       this.peerConnection = new RTCPeerConnection({
         iceServers,

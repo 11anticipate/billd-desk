@@ -55,11 +55,16 @@
             </span>
           </div>
           <div class="v-item two">
+            <span>coturn：</span>
             <span
               class="link"
               @click="handleCopy(getCoturnUrl() || COTURN_URL)"
             >
-              coturn：{{ getCoturnUrl() || COTURN_URL }}
+              {{
+                getCoturnUrl() ||
+                COTURN_URL ||
+                '未配置（对称 NAT 时才需要，可留空）'
+              }}
             </span>
           </div>
           <div

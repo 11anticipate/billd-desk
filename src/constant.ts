@@ -26,7 +26,13 @@ export const APP_BUILD_INFO = process.env
 
 export const NODE_ENV = process.env.NODE_ENV;
 
-export const COTURN_URL = `turn:hk.${prodDomain}`;
+// hk.hsslive.cn no longer resolves, so the upstream TURN entry is unusable and
+// the hss/123456 credentials it shipped with are rejected by the remaining
+// coturn (4.6.2 on srs-pull.hsslive.cn:3478, realm "xxx") anyway.  The
+// official web client runs on public STUN only, so match that: SRFLX
+// candidates from STUN are enough for the peer-to-peer desktop sessions this
+// client takes part in, and a relay is only needed behind symmetric NAT.
+export const COTURN_URL = '';
 
 // ======本地调试=====
 
@@ -44,15 +50,17 @@ export const COTURN_URL = `turn:hk.${prodDomain}`;
 
 // ======线上正式=====
 
+// api-live.hsslive.cn is NXDOMAIN and srs-pull.hsslive.cn answers 404 on
+// /socket.io/.  api.hsslive.cn serves both the REST API (POST /user/login
+// reaches parameter validation instead of 401) and the socket.io signalling
+// endpoint, so both addresses collapse onto it.
 export const WEBSOCKET_URL =
   process.env.NODE_ENV === 'development'
     ? `ws://localhost:4300`
-    : `wss://srs-pull.${prodDomain}`;
+    : `wss://api.${prodDomain}`;
 
 export const AXIOS_BASEURL =
-  process.env.NODE_ENV === 'development'
-    ? `/api`
-    : `https://api-live.${prodDomain}`;
+  process.env.NODE_ENV === 'development' ? `/api` : `https://api.${prodDomain}`;
 
 // ======线上正式=====
 
