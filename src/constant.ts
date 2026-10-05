@@ -26,7 +26,12 @@ export const APP_BUILD_INFO = process.env
 
 export const NODE_ENV = process.env.NODE_ENV;
 
-export const COTURN_URL = `turn:hk.${prodDomain}`;
+// hk.hsslive.cn no longer resolves, and the coturn that is still up
+// (4.6.2 on srs-pull.hsslive.cn:3478, realm "xxx") rejects the hss/123456
+// pair this file used to hardcode.  The official web client negotiates with
+// public STUN only, so match that; a relay is appended when one is set under
+// 高级设置, which is the case that actually needs one.
+export const COTURN_URL = '';
 
 // ======本地调试=====
 
