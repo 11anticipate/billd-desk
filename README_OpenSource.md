@@ -36,6 +36,16 @@
 
 如果你不需要 Wayland 支持，请直接使用上游仓库，本仓库对你没有价值。
 
+### ⚠️ 开源版目前连不上官方服务器
+
+Wayland 注入层解决的是本地能力，但**开源版客户端目前无法连接 BilldDesk 官方服务**，原因是接口形态已经变了：
+
+- 官方地址 `api-live.hsslive.cn` 已 NXDOMAIN，源码里写死的 `api-live` / `srs-pull` 均已失效
+- 官方客户端（安卓版v0.601、网页版 v0.582.0）实际请求的是 `desk-api.hsslive.cn`，而该服务的**每个请求都必须携带 `X-Billd-Sign` MD5 签名**，密钥硬编码在厂商客户端中
+- 服务端的登录接口只接受**数字用户 ID**（`{"username":...}` 会得到 `WHERE parameter "id" has invalid "undefined" value`），账号体系为 GitHub / QQ / 邮箱三方 OAuth
+
+因此本 fork 只在**自建服务端**（[`galaxy-s10/billd-desk-server`](https://github.com/galaxy-s10/billd-desk-server)，同为开源）的前提下可用：开源服务端的 `/desk_user/create` 本就是匿名接口，不需要签名。若你的目标是立刻远程控制 Ubuntu 而不自建服务器，请直接用 [RustDesk](https://rustdesk.com/)（Linux 被控端原生支持 Wayland，无需注入层）。
+
 ### 为什么上游在 Wayland 下不能被控
 
 上游的键鼠注入全部依赖 [nut.js](https://github.com/nut-tree-fork/nut-js)，它在 Linux 下走 X11 的 XTest 扩展。而 Wayland 从协议层面移除了全局输入注入能力，因此 GNOME 原生应用、终端、文件管理器都收不到注入的输入事件 —— 表现就是画面能看、鼠标键盘完全没反应。
